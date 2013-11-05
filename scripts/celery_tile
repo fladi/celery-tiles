@@ -1,0 +1,99 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+###############################################################################
+# Copyright (c) 2013, Michael Fladischer <FladischerMichael@fladi.at>
+# Copyright (c) 2008, Klokan Petr Pridal
+#
+#  Permission is hereby granted, free of charge, to any person obtaining a
+#  copy of this software and associated documentation files (the "Software"),
+#  to deal in the Software without restriction, including without limitation
+#  the rights to use, copy, modify, merge, publish, distribute, sublicense,
+#  and/or sell copies of the Software, and to permit persons to whom the
+#  Software is furnished to do so, subject to the following conditions:
+#
+#  The above copyright notice and this permission notice shall be included
+#  in all copies or substantial portions of the Software.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+#  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+#  THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+#  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+#  DEALINGS IN THE SOFTWARE.
+#******************************************************************************
+
+
+import argparse
+import sys
+import logging
+
+from celery import Celery
+
+from celery_tiles.utils import prepare
+
+logger = logging.getLogger(__name__)
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    parser = argparse.ArgumentParser(description='Validate a GDAL input file and dispatch celery tasks to render tile images.')
+    parser.add_argument('inputfile',
+        metavar='inputfile',
+        type=unicode,
+        help='The input file for the raster'
+    )
+    parser.add_argument('celeryconfig',
+        metavar='config.py',
+        type=unicode,
+        nargs='?',
+        default='celeryconfig',
+        help='The module containing the celery configuration.'
+    )
+    parser.add_argument('-o', '--output',
+        dest='output',
+        action='store',
+        help='Directory where generated tiles should be stored.'
+    )
+    parser.add_argument('-e', '--resume',
+        dest='resume',
+        action='store_true',
+        help='Resume tile generation, omitting already existing tiles.'
+    )
+    parser.add_argument('-n', '--dry-run',
+        dest='dry_run',
+        action='store_true',
+        help='Do not create the actual tiles, only do validation for the input file and calculate number of neccessary tasks.'
+    )
+    parser.add_argument('-f', '--format',
+        dest='format',
+        action='store',
+        type=str,
+        default='PNG',
+        choices=('PNG','GIF','JPEG'), help='Output format for tile images.'
+    )
+    parser.add_argument('-t', '--tilesize',
+        dest='tilesize',
+        action='store',
+        type=int,
+        help='Size (quadratic) for each tile image in pixels.'
+    )
+    parser.add_argument('-s', '--srs',
+        dest='srs',
+        action='store',
+        type=str,
+        help='GDAL input SRS.'
+    )
+
+    args = parser.parse_args(argv)
+
+    celery = Celery('celery_tiles')
+    celery.config_from_object(args.celeryconfig)
+
+    kwargs = vars(args)
+    inputfile = kwargs.pop('inputfile')
+
+    return prepare(inputfile, logger, Exception, **kwargs)
+
+if __name__ == "__main__":
+    sys.exit(main())

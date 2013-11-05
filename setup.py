@@ -31,6 +31,6 @@ setup(name='celery-tiles',
     author_email='FladischerMichael@fladi.at',
     url='https://github.com/fladi/celery-tiles',
     packages=['celery_tiles'],
-    license='BSD',
+    license='Expat',
     scripts=['scripts/celery_tile']
     )

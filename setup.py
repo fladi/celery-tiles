@@ -30,7 +30,7 @@ setup(name='celery-tiles',
     author='Michael Fladischer',
     author_email='FladischerMichael@fladi.at',
     url='https://github.com/fladi/celery-tiles',
-    packages=['celery_tiles'],
+    packages=['celery_tiles','celery_tiles.management.commands'],
     license='Expat',
     scripts=['scripts/celery_tile']
     )

@@ -25,7 +25,7 @@
 from distutils.core import setup
 
 setup(name='celery-tiles',
-    version='0.1',
+    version='0.2',
     description='Distributed tile renderer using celery tasks',
     author='Michael Fladischer',
     author_email='FladischerMichael@fladi.at',

@@ -47,7 +47,8 @@ class TileRenderer(Task):
         gdal.SetConfigOption("GDAL_PAM_ENABLED", "NO")
         self.mem_drv = gdal.GetDriverByName('MEM')
 
-    def run(self, inputfile, tilefile, tx, ty, tz, tilesize, bands, driver='PNG', optimize=False):
+    def run(self, inputfile, tilefile, tx, ty, tz, tilesize, bands, driver='PNG', optimize=False, overviews=False):
+        logger.info('Preparing: %s', tilefile)
         # Initialize necessary GDAL drivers
         if not self.mem_drv:
             raise Exception("The 'MEM' driver was not found, is it available in this GDAL build?")
@@ -61,23 +62,23 @@ class TileRenderer(Task):
         if not ds:
             raise Exception("It is not possible to open the input file '%s'." % inputfile)
 
-        logger.info("Preprocessed file: %s ( %sP x %sL - %s bands)", inputfile, ds.RasterXSize, ds.RasterYSize, ds.RasterCount)
-        logger.info("Input projection: %s", ds.GetProjection())
+        logger.debug("Preprocessed file: %s ( %sP x %sL - %s bands)", inputfile, ds.RasterXSize, ds.RasterYSize, ds.RasterCount)
+        logger.debug("Input projection: %s", ds.GetProjection())
+
 
         mercator = GlobalMercator(tilesize=tilesize)
 
-
         b = mercator.TileBounds(tx, ty, tz)
 
-        logger.info("TileBounds: %f %f %f %f", b[0], b[3], b[2], b[1])
+        logger.debug("TileBounds: minx=%f miny=%f maxx=%f maxy=%f", *b)
 
-        rb, wb = self.geo_query( ds, b[0], b[3], b[2], b[1])
+        rb, wb = self.geo_query(ds, *b)
 
         # Tile bounds in raster coordinates for ReadRaster query
         rx, ry, rxsize, rysize = rb
         wx, wy, wxsize, wysize = wb
-        nativesize = wx + wxsize # Pixel size in the raster covering query geo extent
-        logger.info("Native Extent: %d", nativesize)
+
+        logger.debug("ReadRaster Extent: rx:%d ry:%d rxsize:%d rysize:%d wx:%d wy:%d wxsize:%d wysize:%d", rx, ry, rxsize, rysize, wx, wy, wxsize, wysize)
 
         # Query is in 'nearest neighbour' but can be bigger in then the tilesize
         # We scale down the query to the tilesize by supplied algorithm.
@@ -85,26 +86,49 @@ class TileRenderer(Task):
         # Tile dataset in memory
         band_list = list(range(1, bands+1))
         dstile = self.mem_drv.Create('', tilesize, tilesize, bands+1)
-        logger.info("ReadRaster Extent: rx:%d ry:%d rxsize:%d rysize:%d wx:%d wy:%d wxsize:%d wysize:%d", rx, ry, rxsize, rysize, wx, wy, wxsize, wysize)
-        data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=band_list)
-        alphaband = ds.GetRasterBand(1).GetMaskBand()
-        alpha = alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
 
-        # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
-        #dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=band_list)
-        #dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[bands+1])
-        dsquery = self.mem_drv.Create('', rxsize, rysize, bands+1)
+        # Not implemented yet, therefor always uses reprojection.
+        if not overviews:
 
-        dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=band_list)
-        dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[bands+1])
+            # Read data and alpha band
+            logger.debug("Reading data band raster: %s", (rx, ry, rxsize, rysize, wxsize, wysize))
+            data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=band_list)
+            alphaband = ds.GetRasterBand(1).GetMaskBand()
+            logger.debug("Reading alpha band raster: %s", (rx, ry, rxsize, rysize, wxsize, wysize))
+            alpha = alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
 
-        dsquery.SetGeoTransform( (0.0, tilesize / float(rxsize), 0.0, 0.0, 0.0, tilesize / float(rysize)) )
-        dstile.SetGeoTransform( (0.0, 1.0, 0.0, 0.0, 0.0, 1.0) )
+            # Create empty buffer to write to
+            dsquery = self.mem_drv.Create('', wxsize, wysize, bands+1)
 
-        logger.info('Reprojecting ...')
-        res = gdal.ReprojectImage(dsquery, dstile, None, None, gdal.GRA_NearestNeighbour)
+            logger.debug("Writing data band raster: %s", (wx, wy, wxsize, wysize))
+            dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=band_list)
+            logger.debug("Writing alpha band raster: %s", (wx, wy, wxsize, wysize))
+            dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[bands+1])
+
+            dsquery.SetGeoTransform( (0.0, tilesize / float(rxsize), 0.0, 0.0, 0.0, tilesize / float(rysize)) )
+            dstile.SetGeoTransform( (0.0, 1.0, 0.0, 0.0, 0.0, 1.0) )
+
+            logger.debug('Reprojecting ...')
+            res = gdal.ReprojectImage(dsquery, dstile, None, None, gdal.GRA_NearestNeighbour)
+
+        else:
+            tilesizex = int(wxsize/float(wx+wxsize)*tilesize)
+            tilesizey = int(wysize/float(wy+wysize)*tilesize)
+            logger.debug("Cropped Tilesize: x=%d y=%d", tilesizex, tilesizey)
+            logger.debug("Reading data band raster: %s", (rx, ry, rxsize, rysize, wxsize, wysize))
+            data = ds.ReadRaster(rx, ry, rxsize, rysize, band_list=band_list, buf_xsize=tilesizex, buf_ysize=tilesizey)
+            alphaband = ds.GetRasterBand(1).GetMaskBand()
+            logger.debug("Reading alpha band raster: %s", (rx, ry, rxsize, rysize, wxsize, wysize))
+            alpha = alphaband.ReadRaster(rx, ry, rxsize, rysize, buf_xsize=tilesizex, buf_ysize=tilesizey)
+
+            # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
+            logger.debug("Writing data band raster: %s", (wx, wy, wxsize, wysize))
+            dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=band_list)
+            logger.debug("Writing alpha band raster: %s", (wx, wy, wxsize, wysize))
+            dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[bands+1])
 
         del data
+        del alpha
 
         # Write a copy of tile to png/jpg
         logger.info('Rendering: %s', tilefile)
@@ -118,28 +142,31 @@ class TileRenderer(Task):
 
         logger.info('Done: %s', tilefile)
 
-    def geo_query(self, ds, ulx, uly, lrx, lry):
+
+    def geo_query(self, ds, minx, miny, maxx, maxy):
         """For given dataset and query in cartographic coordinates
         returns parameters for ReadRaster() in raster coordinates and
         x/y shifts (for border tiles). If the querysize is not given, the
         extent is returned in the native resolution of dataset ds."""
 
-        geotran = ds.GetGeoTransform()
-        rx= int((ulx - geotran[0]) / geotran[1] + 0.001)
-        ry= int((uly - geotran[3]) / geotran[5] + 0.001)
-        rxsize= int((lrx - ulx) / geotran[1] + 0.5)
-        rysize= int((lry - uly) / geotran[5] + 0.5)
+        (ulx, pwx, rotx, uly, roty, pwy) = ds.GetGeoTransform()
+        rx = int((minx - ulx) / pwx + 0.001)
+        ry = int((maxy - uly) / pwy + 0.001)
+        rxsize = int((maxx - minx) / pwx + 0.5)
+        rysize = int((miny - maxy) / pwy + 0.5)
 
         wxsize, wysize = rxsize, rysize
 
         # Coordinates should not go out of the bounds of the raster
         wx = 0
+        # Left border
         if rx < 0:
             rxshift = abs(rx)
             wx = int( wxsize * (float(rxshift) / rxsize) )
             wxsize = wxsize - wx
             rxsize = rxsize - int( rxsize * (float(rxshift) / rxsize) )
             rx = 0
+        # Right border
         if rx+rxsize > ds.RasterXSize:
             wxsize = int( wxsize * (float(ds.RasterXSize - rx) / rxsize) )
             rxsize = ds.RasterXSize - rx

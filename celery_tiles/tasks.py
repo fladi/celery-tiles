@@ -33,7 +33,7 @@ from osgeo import gdal
 
 from celery import Task
 
-from .utils import GlobalMercator
+from celery_tiles.utils import GlobalMercator
 
 logger = logging.getLogger(__name__)
 

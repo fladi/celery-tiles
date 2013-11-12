@@ -40,8 +40,9 @@ from optparse import make_option
 from osgeo import gdal
 from osgeo import osr
 
-from ...utils import GlobalMercator, prepare
-from ...tasks import TileRenderer
+from celery_tiles import prepare
+from celery_tiles.utils import GlobalMercator
+from celery_tiles.tasks import TileRenderer
 
 logger = logging.getLogger(__name__)
 

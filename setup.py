@@ -32,5 +32,15 @@ setup(name='celery-tiles',
     url='https://github.com/fladi/celery-tiles',
     packages=['celery_tiles','celery_tiles.management.commands'],
     license='Expat',
-    scripts=['scripts/celery_tile']
+    scripts=['scripts/celery_tile'],
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Environment :: Console',
+        'Framework :: Django',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
+        'Topic :: Scientific/Engineering :: GIS',
+        'Topic :: Scientific/Engineering :: Visualization',
+        'Topic :: System :: Distributed Computing',
+    ]
     )

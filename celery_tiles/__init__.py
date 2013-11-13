@@ -32,7 +32,7 @@ import tempfile
 from celery_tiles.tasks import TileRenderer
 from celery_tiles.utils import GlobalMercator
 
-version = "0.2"
+version = "0.3"
 
 def prepare(inputfile, logger, exc, **options):
     gdal.AllRegister()

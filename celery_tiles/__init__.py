@@ -30,6 +30,7 @@ import os
 import tempfile
 
 from celery_tiles.tasks import TileRenderer
+from celery_tiles.utils import GlobalMercator
 
 version = "0.2"
 
